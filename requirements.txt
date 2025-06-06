@@ -1,0 +1,2 @@
+yt-dlp
+prompt-toolkit>=3.0,<4.0 # Specify a reasonable version range for prompt-toolkit

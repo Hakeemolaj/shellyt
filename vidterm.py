@@ -10,7 +10,7 @@ from prompt_toolkit.layout.containers import HSplit, VSplit, Window, WindowAlign
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.layout import Layout
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.widgets import TextArea, Label, Frame, Box
+from prompt_toolkit.widgets import TextArea, Label, Frame, Box # TextArea might still be used for results if that was the intention
 from prompt_toolkit.document import Document
 from prompt_toolkit.shortcuts import message_dialog # For simple error popups
 
@@ -25,15 +25,12 @@ def show_status_message(message, duration=None):
         application_instance.status_bar_control.text = message
         application_instance.invalidate()
         if duration:
-            # This is a simple way; for multiple timed messages, a queue would be better
             async def clear_message():
                 await asyncio.sleep(duration)
-                # Clear only if the message hasn't changed
-                if application_instance.status_bar_control.text == message:
+                if application_instance.status_bar_control.text == message: # Clear only if not overwritten
                     application_instance.status_bar_control.text = get_default_status_text()
                 application_instance.invalidate()
             asyncio.create_task(clear_message())
-
 
 def get_default_status_text():
     return "VidTerm | (Ctrl-C/Q to quit) | (Up/Down, Enter to play)"
@@ -48,7 +45,6 @@ async def search_videos_async(query):
     }
     results = []
     try:
-        # yt-dlp is synchronous, run in executor to not block event loop
         loop = asyncio.get_event_loop()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = await loop.run_in_executor(None, lambda: ydl.extract_info(f"ytsearch10:{query}", download=False))
@@ -71,7 +67,7 @@ async def search_videos_async(query):
         show_status_message(f"Search Error: {e}", 5)
     except Exception as e:
         show_status_message(f"Unexpected Search Error: {e}", 5)
-    return [] # Return empty list on error
+    return []
 
 async def get_stream_url_async(video_id):
     show_status_message(f"Fetching stream for {video_id}...")
@@ -100,20 +96,18 @@ async def get_stream_url_async(video_id):
 async def play_video_in_terminal_async(video_id):
     show_status_message(f"Preparing video ID: {video_id}...")
 
-    # Check if mpv is installed
     try:
         process = await asyncio.create_subprocess_exec('which', 'mpv', stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         await process.wait()
         if process.returncode != 0:
             show_status_message("mpv not found. Please install mpv.", 5)
-            # Fallback to message_dialog if status bar is too transient for critical errors
-            if application_instance: # Ensure app instance exists for dialog
-                 await message_dialog(title="Error", text="mpv not found. Please install mpv to play videos.").run_async(application_instance)
+            if application_instance: # Check if app instance exists before calling dialog
+                 await message_dialog(title="Error", text="mpv not found. Please install mpv to play videos.").run_async()
             return
-    except FileNotFoundError: # 'which' not found
+    except FileNotFoundError:
         show_status_message("'which' command not found. Cannot check for mpv.", 5)
-        if application_instance: # Ensure app instance exists for dialog
-            await message_dialog(title="Error", text="'which' command not found. Cannot verify mpv installation.").run_async(application_instance)
+        if application_instance:
+            await message_dialog(title="Error", text="'which' command not found. Cannot verify mpv installation.").run_async()
         return
 
     stream_url = await get_stream_url_async(video_id)
@@ -123,23 +117,20 @@ async def play_video_in_terminal_async(video_id):
 
     show_status_message(f"Starting playback: {video_id}. (mpv will take over)")
 
-    # Suspend prompt_toolkit application
     if application_instance:
         await application_instance.suspend_to_background()
 
     try:
         command = ["mpv", stream_url, f"--title=VidTerm: {video_id}"]
         mpv_process = await asyncio.create_subprocess_exec(*command)
-        await mpv_process.wait() # Wait for mpv to exit
-    except FileNotFoundError: # Should be caught by 'which' check, but as a fallback
-        show_status_message("mpv not found. Please install mpv.", 5)
+        await mpv_process.wait()
+    except FileNotFoundError:
+        show_status_message("mpv not found (during play attempt). Please install mpv.", 5)
     except Exception as e:
         show_status_message(f"Error during playback: {e}", 5)
     finally:
-        # Resume prompt_toolkit application
         if application_instance:
-            # application_instance.reset() # Reset UI state if needed
-            application_instance.renderer.clear() # Clear screen before resuming
+            application_instance.renderer.clear()
             await application_instance.resume_from_background()
         show_status_message(get_default_status_text(), 3)
 
@@ -155,37 +146,52 @@ kb = KeyBindings()
 def _(event):
     event.app.exit()
 
-search_buffer = Buffer()
-search_field = TextArea(buffer=search_buffer, multiline=False, wrap_lines=False, prompt='Search: ', height=1)
-results_text_area = FormattedTextControl(text="Enter a search query above and press Enter.")
-results_window = Window(content=results_text_area, wrap_lines=False, allow_scroll_beyond_bottom=False) # wrap_lines=False for better control
-
-def update_results_display():
-    global current_search_results, selected_video_index
-    if not current_search_results:
-        results_text_area.text = "No results found, or perform a search."
-    else:
-        formatted_results = []
-        for i, video in enumerate(current_search_results):
-            prefix = "[SELECTED] " if i == selected_video_index else "           " # Fixed width prefix
-            line = f"{prefix}{i+1}. {video['title']} ({video['duration_string']}) - {video['uploader']}"
-            # Truncate long lines if they might cause wrapping issues, or ensure window handles scrolling
-            formatted_results.append(line)
-        results_text_area.text = "\n".join(formatted_results)
-
-    if application_instance:
-        application_instance.invalidate()
-
-async def search_accept_handler_async(buf):
-    global current_search_results, selected_video_index
-    query = search_buffer.text
+# --- Search Input Field: Refactored ---
+# Accept handler for the search buffer
+async def search_accept_handler_async(buffer_instance): # Renamed arg for clarity
+    global current_search_results, selected_video_index, application_instance
+    query = buffer_instance.text # Use text from the buffer passed to handler
     if query:
         current_search_results = await search_videos_async(query)
         selected_video_index = 0
         update_results_display()
-    # search_buffer.reset() # Keep query for context or clear it
+    # buffer_instance.reset() # Optionally clear search field after search - keeping text can be useful
 
-search_field.accept_handler = lambda buf: asyncio.create_task(search_accept_handler_async(buf))
+search_buffer = Buffer(
+    accept_handler=lambda buf: asyncio.create_task(search_accept_handler_async(buf)),
+    multiline=False
+)
+# Removed: search_field.accept_handler = ... (now part of Buffer constructor)
+
+# Use BufferControl within a Window for the search field
+search_input_control = BufferControl(buffer=search_buffer, focusable=True)
+# This window will be the actual element you interact with for text input
+search_field_window = Window(
+    content=search_input_control,
+    height=1,
+    dont_extend_height=True # Important for single line input
+)
+# --- End of Search Input Field Refactor ---
+
+
+results_text_area_control = FormattedTextControl(text="Enter a search query above and press Enter.") # Renamed for clarity
+results_window = Window(content=results_text_area_control, wrap_lines=False, allow_scroll_beyond_bottom=False)
+
+def update_results_display():
+    global current_search_results, selected_video_index, results_text_area_control
+    if not current_search_results:
+        results_text_area_control.text = "No results found, or perform a search."
+    else:
+        formatted_results = []
+        for i, video in enumerate(current_search_results):
+            prefix = "[SELECTED] " if i == selected_video_index else "           "
+            line = f"{prefix}{i+1}. {video['title']} ({video['duration_string']}) - {video['uploader']}"
+            formatted_results.append(line)
+        results_text_area_control.text = "\n".join(formatted_results)
+
+    if application_instance:
+        application_instance.invalidate()
+
 
 @kb.add('down')
 def _(event):
@@ -196,12 +202,14 @@ def _(event):
 
 @kb.add('up')
 def _(event):
-    global selected_video_index
-    if current_search_results: # Check not just selected_video_index > 0
+    global selected_video_index, current_search_results # Added current_search_results
+    if current_search_results:
         selected_video_index = max(0, selected_video_index - 1)
         update_results_display()
 
-@kb.add('enter', filter=lambda: application_instance is not None and application_instance.layout.has_focus(search_field) == False) # Only if search is not focused
+# Ensure 'enter' for playback doesn't trigger if search field is focused.
+# The focus check should refer to the new search_field_window or its control.
+@kb.add('enter', filter=lambda: application_instance.layout.has_focus(search_field_window) == False)
 def _(event):
     global current_search_results, selected_video_index
     if current_search_results and 0 <= selected_video_index < len(current_search_results):
@@ -212,11 +220,12 @@ def _(event):
 status_bar_control = FormattedTextControl(get_default_status_text())
 status_bar = Window(status_bar_control, height=1, style="reverse", align=WindowAlign.LEFT)
 
-# Make results window scrollable if content overflows
+# Frame the search_field_window (the new input window)
+search_frame = Frame(search_field_window, title="Search Query") # Changed search_field to search_field_window
 results_frame = Frame(results_window, title="Results (Up/Down, Enter to play)")
 
 body = HSplit([
-    Frame(search_field, title="Search Query"),
+    search_frame, # Use the refactored search_frame
     results_frame,
     status_bar
 ])
@@ -227,16 +236,12 @@ def main():
         layout=Layout(body),
         key_bindings=kb,
         full_screen=True,
-        mouse_support=True # Consider making this optional
+        mouse_support=True
     )
-    # Store status_bar_control on app for easy access
     application_instance.status_bar_control = status_bar_control
 
-    # Initial display update
     update_results_display()
-    # Run the application using asyncio
     asyncio.run(application_instance.run_async())
-
 
 if __name__ == '__main__':
     main()

@@ -2,6 +2,8 @@
 
 VidTerm is a Python-based command-line tool that allows you to search for videos (primarily from YouTube) and watch them directly in your Linux terminal using the `mpv` media player. It features a simple, text-based user interface (TUI) for ease of use.
 
+This project includes an automated installation script (`install.sh`) and a convenient wrapper script (`run_vidterm.sh`) for easy setup and execution.
+
 ## Features
 
 *   Search for videos from platforms supported by `yt-dlp` (defaulting to YouTube).
@@ -9,54 +11,52 @@ VidTerm is a Python-based command-line tool that allows you to search for videos
 *   Playback of videos directly in the terminal using `mpv`.
 *   Navigation of search results using keyboard shortcuts.
 *   Status messages and error notifications within the TUI.
+*   Automated installation script (`install.sh`).
+*   Wrapper script (`run_vidterm.sh`) for easy execution.
 
 ## Prerequisites
 
 Before you begin, ensure you have the following installed on your Linux system:
 
-*   **Python 3.7+**: VidTerm is written in Python 3. You can check your Python version with `python3 --version`.
-*   **mpv Media Player**: This is essential for video playback.
+*   **Python 3.7+**: VidTerm is written in Python 3. The `install.sh` script will check for `python3`.
+    *   You can typically install it via your system's package manager (e.g., `sudo apt install python3 python3-pip python3-venv`).
+*   **mpv Media Player**: This is essential for video playback. The `install.sh` script will check for `mpv` and provide installation suggestions if it's missing.
     *   On Debian/Ubuntu: `sudo apt update && sudo apt install mpv`
     *   On Fedora: `sudo dnf install mpv`
     *   On Arch Linux: `sudo pacman -S mpv`
-    *   For other distributions, please refer to their package manager documentation.
-*   **yt-dlp**: While installed as a Python dependency, `yt-dlp` is the core engine for fetching video information.
-*   **`which` command**: Used by the script to detect if `mpv` is installed. This is typically available by default on most Linux systems.
+*   **`git` (Optional, for cloning):** If you plan to clone the repository.
+*   **Standard build tools (Optional):** Some Python packages might need them if they build from source, though `yt-dlp` and `prompt-toolkit` often have wheels. `python3-dev` or `python3-devel` can be useful.
+
+The `install.sh` script will also verify the availability of `pip` and `venv` for your Python 3 installation.
 
 ## Installation
 
-1.  **Get the script:**
-    *   If you have cloned this repository: `git clone <repository_url>` and `cd <repository_directory>`
-    *   Otherwise, ensure you have the `vidterm.py` script.
+1.  **Get the VidTerm scripts:**
+    *   If using git: `git clone <repository_url>` and `cd <repository_directory>`
+    *   Otherwise, download `vidterm.py`, `install.sh`, `run_vidterm.sh`, and `requirements.txt` into the same directory.
 
-2.  **Create a Python virtual environment:**
+2.  **Make the scripts executable:**
     ```bash
-    python3 -m venv .venv
+    chmod +x install.sh
+    chmod +x run_vidterm.sh
     ```
 
-3.  **Activate the virtual environment:**
+3.  **Run the installation script:**
     ```bash
-    source .venv/bin/activate
+    ./install.sh
     ```
-    *(To deactivate later, simply type `deactivate`)*
-
-4.  **Install Python dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+    This script will:
+    *   Check for necessary dependencies (Python 3, pip, venv, mpv).
+    *   Create a Python virtual environment named `.venv` in the current directory.
+    *   Install the required Python packages into this virtual environment.
 
 ## Usage
 
-1.  **Ensure your virtual environment is activated:**
+1.  **Run VidTerm using the wrapper script:**
     ```bash
-    source .venv/bin/activate
+    ./run_vidterm.sh
     ```
-    *(If you haven't already in the current terminal session)*
-
-2.  **Run VidTerm:**
-    ```bash
-    python vidterm.py
-    ```
+    This script automatically uses the Python interpreter and packages from the `.venv` virtual environment. You do **not** need to manually activate the virtual environment.
 
 ### Keyboard Controls
 
@@ -81,7 +81,13 @@ Example: For audio-only playback, you could change it to:
 
 ## Troubleshooting
 
-*   **"mpv not found" message:** Ensure `mpv` is correctly installed and accessible in your system's PATH. Try running `mpv --version` in your terminal to verify.
-*   **"which command not found" message:** This is unlikely but indicates the `which` utility is missing. It's a standard Linux utility.
-*   **Python errors:** Ensure you are using Python 3.7+ and that all dependencies were installed correctly in an active virtual environment.
-*   **Video playback issues:** These could be due to `mpv` configuration, network problems, or issues with the video stream itself. Test `mpv` with a direct YouTube URL (`mpv "youtube_url"`) to isolate the issue.
+*   **`install.sh` script errors:**
+    *   Pay attention to messages from the script. It will guide you if Python 3, pip, venv, or mpv are missing.
+    *   Ensure `install.sh` has execute permissions (`chmod +x install.sh`).
+*   **`run_vidterm.sh` script errors:**
+    *   This usually means `install.sh` was not run or did not complete successfully. Ensure the `.venv` directory exists and contains the necessary files.
+    *   Ensure `run_vidterm.sh` has execute permissions.
+*   **Video playback issues:**
+    *   These could be due to `mpv` configuration, network problems, or issues with the video stream itself. Test `mpv` with a direct YouTube URL (`mpv "youtube_url"`) to isolate the issue.
+*   **Other Python errors:**
+    *   If you encounter Python errors after running `./run_vidterm.sh`, it might indicate an issue with the installed dependencies or the script itself. Ensure `requirements.txt` is up to date and all packages installed correctly.
